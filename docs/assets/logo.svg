@@ -1,0 +1,34 @@
+<svg viewBox="0 0 256 256" width="256" height="256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agora logo: six service nodes connected to a central broker">
+  <title>Agora</title>
+
+  <g fill="none" stroke="#6366F1" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- outer ring: service-to-service edges -->
+    <path d="M204 128 L166 62.2 L90 62.2 L52 128 L90 193.8 L166 193.8 Z"
+          stroke-width="4" opacity="0.28"/>
+
+    <!-- spokes: each service to the broker -->
+    <g stroke-width="6" opacity="0.55">
+      <path d="M128 128 L204 128"/>
+      <path d="M128 128 L166 62.2"/>
+      <path d="M128 128 L90 62.2"/>
+      <path d="M128 128 L52 128"/>
+      <path d="M128 128 L90 193.8"/>
+      <path d="M128 128 L166 193.8"/>
+    </g>
+  </g>
+
+  <!-- six services -->
+  <g fill="#6366F1">
+    <circle cx="204" cy="128" r="13"/>
+    <circle cx="166" cy="62.2" r="13"/>
+    <circle cx="90"  cy="62.2" r="13"/>
+    <circle cx="52"  cy="128" r="13"/>
+    <circle cx="90"  cy="193.8" r="13"/>
+    <circle cx="166" cy="193.8" r="13"/>
+  </g>
+
+  <!-- the broker: the one thing they are allowed to share -->
+  <circle cx="128" cy="128" r="22" fill="#F59E0B"/>
+  <circle cx="128" cy="128" r="9" fill="#FFFFFF" opacity="0.92"/>
+</svg>
