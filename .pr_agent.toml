@@ -1,0 +1,65 @@
+[config]
+model = "deepseek/deepseek-v4-pro"
+fallback_models = ["deepseek/deepseek-v4-flash"]
+
+[github_action_config]
+auto_describe = true
+auto_review = true
+auto_improve = true
+pr_actions = ["opened", "reopened", "ready_for_review"]
+handle_push_trigger = true
+push_commands = ['/describe', '/review', '/improve']
+
+[ignore]
+glob = [
+  "**/drizzle/**",
+  "**/*.generated.ts",
+  "pnpm-lock.yaml",
+]
+
+[pr_description]
+publish_labels = true
+generate_ai_title = true
+
+[pr_reviewer]
+require_todo_scan = true
+num_max_findings = 3
+publish_output_no_suggestions = false
+extra_instructions = """
+Stack: TypeScript (ESM, Node 24), Express 5, PostgreSQL via Drizzle ORM, RS256 JWTs
+with a JWKS endpoint, RabbitMQ. pnpm monorepo: each service under services/ owns its
+own database and may not read another service's tables.
+
+- Verify against package.json, the Drizzle schema and existing code before making any
+  claim about runtime behaviour.
+- Flag only what you are confident about. Where uncertain, say so explicitly rather
+  than presenting a guess as a defect.
+- Priority order: security, then logic bugs, then missing edge cases. Do not report
+  style, naming or structural preferences.
+- For every finding, describe the concrete scenario that triggers it. "This is
+  theoretically possible" is not a finding.
+- Do not flag race conditions unless they cause data loss, a security hole, or an
+  incorrect financial outcome.
+- Do not suggest error handling the framework or database already provides. Express 5
+  propagates rejections from async handlers natively, and Postgres INSERT/UPDATE
+  ... RETURNING cannot yield null on success.
+- Do not flag a service for failing to handle concerns owned by a different service.
+"""
+
+[pr_code_suggestions]
+commitable_code_suggestions = true
+demand_code_suggestions_self_review = true
+suggestions_score_threshold = 6
+extra_instructions = """
+Stack: TypeScript (ESM, Node 24), Express 5, PostgreSQL via Drizzle ORM, RS256 JWTs
+with a JWKS endpoint, RabbitMQ. pnpm monorepo with one database per service.
+
+- Suggest only fixes for real bugs or genuine security issues. Not style, not
+  structure, not naming.
+- Check installed versions in package.json before suggesting an API. Do not suggest
+  patterns from older major versions of a library.
+- Do not suggest error handling the framework or database already provides (see the
+  Express 5 and Postgres RETURNING cases above).
+- If a suggestion depends on an assumption you could not verify from the diff or the
+  repository, do not make it.
+"""
