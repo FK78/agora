@@ -15,13 +15,15 @@ import { hashString } from "../utils/auth.ts";
 import { AppError } from "../errors/AppError.ts";
 import type { UserRecord } from "../types/auth.ts";
 import type { RefreshToken } from "../types/tokens.ts";
-import type { PoolClient } from "pg";
+import type { DbOrTransaction } from "../db/db.ts";
 
 vi.mock("../queries/auth.queries.ts");
 vi.mock("../queries/token.queries.ts");
 vi.mock("./token.service.ts");
 vi.mock("../db/db.ts", () => ({
-  withTransaction: vi.fn((fn: (client: PoolClient) => unknown) => fn({} as PoolClient)),
+  db: {
+    transaction: vi.fn(async <T>(fn: (tx: DbOrTransaction) => Promise<T>) => fn({} as DbOrTransaction)),
+  },
 }));
 
 const fakeUser = (overrides: Partial<UserRecord> = {}): UserRecord => ({
@@ -130,7 +132,7 @@ describe("loginUser", () => {
 describe("refreshTokens", () => {
   const fakeRow = (overrides: Partial<RefreshToken> = {}): RefreshToken => ({
     id: "token-1",
-    refreshTokenHash: "hash",
+    tokenHash: "hash",
     userId: "user-1",
     tokenFamilyId: "family-1",
     replacedById: null,

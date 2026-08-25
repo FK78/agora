@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { SignJWT } from "jose";
-import type { PoolClient } from "pg";
 import {
   linkReplacedToken,
   markTokenReplaced,
@@ -10,8 +9,9 @@ import type { RefreshToken } from "../types/tokens.ts";
 import type { AuthUser } from "../types/auth.ts";
 import { generateOpaqueToken, hashToken } from "../utils/auth.ts";
 import { getPrivateKey } from "../config/keys.ts";
+import type { DbOrTransaction } from "../db/db.ts";
 
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const signAccessToken = async (user: AuthUser): Promise<string> => {
   const key = await getPrivateKey();
@@ -24,10 +24,15 @@ const signAccessToken = async (user: AuthUser): Promise<string> => {
     .sign(key);
 };
 
+/**
+ * @param user - User to create tokens for
+ * @param tokenFamilyId - Family ID for token rotation tracking
+ * @param dbOrTx - Database or transaction instance
+ */
 const createAndPersistTokenPair = async (
   user: AuthUser,
   tokenFamilyId: string,
-  client?: PoolClient
+  dbOrTx?: DbOrTransaction
 ) => {
   const accessToken = await signAccessToken(user);
   const refreshToken = generateOpaqueToken();
@@ -40,12 +45,16 @@ const createAndPersistTokenPair = async (
       tokenFamilyId,
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     },
-    client
+    dbOrTx
   );
 
   return { accessToken, refreshToken, newRow };
 };
 
+/**
+ * @param user - User to issue tokens for
+ * @returns Access token and refresh token
+ */
 export const issueTokenPair = async (user: AuthUser) => {
   const { accessToken, refreshToken } = await createAndPersistTokenPair(
     user,
@@ -54,17 +63,26 @@ export const issueTokenPair = async (user: AuthUser) => {
   return { accessToken, refreshToken };
 };
 
+/**
+ * @param user - User to issue new tokens for
+ * @param oldToken - The refresh token being rotated out
+ * @param tx - Drizzle transaction instance (required for atomicity)
+ * @returns New access token and refresh token
+ */
 export const rotateTokenPair = async (
   user: AuthUser,
   oldToken: RefreshToken,
-  client: PoolClient
+  tx: DbOrTransaction
 ) => {
-  await markTokenReplaced(oldToken.id, client);
+  await markTokenReplaced(oldToken.id, tx);
+
   const { accessToken, refreshToken, newRow } = await createAndPersistTokenPair(
     user,
     oldToken.tokenFamilyId,
-    client
+    tx
   );
-  await linkReplacedToken(oldToken.id, newRow.id, client);
+
+  await linkReplacedToken(oldToken.id, newRow.id, tx);
+
   return { accessToken, refreshToken };
 };

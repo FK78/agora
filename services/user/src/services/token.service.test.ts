@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { jwtVerify, importSPKI } from "jose";
-import type { PoolClient } from "pg";
 import { issueTokenPair, rotateTokenPair } from "./token.service.ts";
 import {
   saveRefreshToken,
@@ -11,6 +10,7 @@ import { hashToken } from "../utils/auth.ts";
 import { env } from "../config/env.ts";
 import type { RefreshToken } from "../types/tokens.ts";
 import type { AuthUser } from "../types/auth.ts";
+import type { DbOrTransaction } from "../db/db.ts";
 
 vi.mock("../queries/token.queries.ts");
 
@@ -18,7 +18,7 @@ const user: AuthUser = { id: "user-1" };
 
 const fakeRefreshTokenRow = (overrides: Partial<RefreshToken> = {}): RefreshToken => ({
   id: "row-1",
-  refreshTokenHash: "hash",
+  tokenHash: "hash",
   userId: user.id,
   tokenFamilyId: "family-1",
   replacedById: null,
@@ -71,23 +71,24 @@ describe("issueTokenPair", () => {
 describe("rotateTokenPair", () => {
   it("marks the old token replaced, persists a new one in the same family, and links them", async () => {
     const oldToken = fakeRefreshTokenRow({ id: "old-id", tokenFamilyId: "family-42" });
-    const client = {} as PoolClient;
+    const tx = {} as DbOrTransaction;
     vi.mocked(saveRefreshToken).mockResolvedValue(fakeRefreshTokenRow({ id: "new-id" }));
 
-    await rotateTokenPair(user, oldToken, client);
+    await rotateTokenPair(user, oldToken, tx);
 
-    expect(markTokenReplaced).toHaveBeenCalledWith("old-id", client);
+    expect(markTokenReplaced).toHaveBeenCalledWith("old-id", tx);
     expect(saveRefreshToken).toHaveBeenCalledWith(
       expect.objectContaining({ userId: user.id, tokenFamilyId: "family-42" }),
-      client
+      tx
     );
-    expect(linkReplacedToken).toHaveBeenCalledWith("old-id", "new-id", client);
+    expect(linkReplacedToken).toHaveBeenCalledWith("old-id", "new-id", tx);
   });
 
   it("returns a fresh access/refresh token pair", async () => {
     const oldToken = fakeRefreshTokenRow({ id: "old-id" });
+    const tx = {} as DbOrTransaction;
 
-    const result = await rotateTokenPair(user, oldToken, {} as PoolClient);
+    const result = await rotateTokenPair(user, oldToken, tx);
 
     expect(typeof result.accessToken).toBe("string");
     expect(typeof result.refreshToken).toBe("string");

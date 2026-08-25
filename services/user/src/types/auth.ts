@@ -1,10 +1,5 @@
+export type { User as UserRecord, User, NewUser } from "../db/schema.ts";
+
 export interface AuthUser {
   id: string;
-}
-
-export interface UserRecord {
-  id: string;
-  name: string;
-  email: string;
-  passwordHash: string;
 }
