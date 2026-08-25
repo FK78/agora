@@ -1,9 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
-import { AppError } from "../errors/AppError.ts";
-import { env } from "../config/env.ts";
 import { jwtVerify } from "jose";
-
-const secret = new TextEncoder().encode(env.ACCESS_TOKEN_SECRET);
+import { AppError } from "../errors/AppError.ts";
+import { getPublicKey } from "../config/keys.ts";
 
 export const authenticate = async (
   req: Request,
@@ -19,8 +17,9 @@ export const authenticate = async (
   let payload: { sub?: string; type?: string };
 
   try {
-    const { payload: verified } = await jwtVerify(accessToken, secret, {
-      algorithms: ["RS256"],
+    const key = await getPublicKey();
+    const { payload: verified } = await jwtVerify(accessToken, key, {
+      algorithms: ["ES256"],
       issuer: "agora-user-service",
       audience: "agora-api",
     });

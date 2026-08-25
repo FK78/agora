@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { jwtVerify } from "jose";
+import { jwtVerify, importSPKI } from "jose";
 import type { PoolClient } from "pg";
 import { issueTokenPair, rotateTokenPair } from "./token.service.ts";
 import {
@@ -14,7 +14,6 @@ import type { AuthUser } from "../types/auth.ts";
 
 vi.mock("../queries/token.queries.ts");
 
-const secret = new TextEncoder().encode(env.ACCESS_TOKEN_SECRET);
 const user: AuthUser = { id: "user-1" };
 
 const fakeRefreshTokenRow = (overrides: Partial<RefreshToken> = {}): RefreshToken => ({
@@ -38,7 +37,8 @@ describe("issueTokenPair", () => {
   it("signs an access token with the correct claims", async () => {
     const { accessToken } = await issueTokenPair(user);
 
-    const { payload } = await jwtVerify(accessToken, secret, {
+    const publicKey = await importSPKI(env.JWT_PUBLIC_KEY, "ES256");
+    const { payload } = await jwtVerify(accessToken, publicKey, {
       issuer: "agora-user-service",
       audience: "agora-api",
     });

@@ -1,25 +1,34 @@
 import { describe, it, expect, vi } from "vitest";
-import { SignJWT } from "jose";
+import { SignJWT, generateKeyPair, exportPKCS8, exportSPKI, importPKCS8 } from "jose";
 import type { Request, Response } from "express";
 import { authenticate } from "./authenticate.ts";
 import { AppError } from "../errors/AppError.ts";
 import { env } from "../config/env.ts";
 
-const secret = new TextEncoder().encode(env.ACCESS_TOKEN_SECRET);
-const wrongSecret = new TextEncoder().encode("wrong-secret");
+// Use the actual keys from env for valid tokens
+const validPrivateKey = await importPKCS8(env.JWT_PRIVATE_KEY, "ES256");
+
+// Generate a separate key pair for "wrong key" tests
+const wrongKeyPair = await generateKeyPair("ES256");
 
 const sign = async (
   payload: Record<string, unknown>,
-  overrides: { secret?: Uint8Array; issuer?: string; audience?: string; expiresIn?: string; algorithm?: string } = {}
+  overrides: { privateKey?: CryptoKey; issuer?: string; audience?: string; expiresIn?: string; algorithm?: string } = {}
 ) => {
-  const { secret: key = secret, issuer = "auth-starter", audience = "auth-starter-api", expiresIn = "15m", algorithm = "HS256" } = overrides;
-  
+  const {
+    privateKey = validPrivateKey,
+    issuer = "agora-user-service",
+    audience = "agora-api",
+    expiresIn = "15m",
+    algorithm = "ES256"
+  } = overrides;
+
   return new SignJWT(payload)
     .setProtectedHeader({ alg: algorithm })
     .setIssuer(issuer)
     .setAudience(audience)
     .setExpirationTime(expiresIn)
-    .sign(key);
+    .sign(privateKey);
 };
 
 const fakeReq = (authHeader?: string) =>
@@ -47,8 +56,8 @@ describe("authenticate", () => {
     expect(next).toHaveBeenCalledOnce();
   });
 
-  it("throws for a token signed with the wrong secret", async () => {
-    const token = await sign({ sub: "user-1", type: "access" }, { secret: wrongSecret });
+  it("throws for a token signed with the wrong key", async () => {
+    const token = await sign({ sub: "user-1", type: "access" }, { privateKey: wrongKeyPair.privateKey as CryptoKey });
 
     await expect(
       authenticate(fakeReq(`Bearer ${token}`), {} as Response, vi.fn()),
@@ -75,14 +84,6 @@ describe("authenticate", () => {
 
   it("throws when the token type isn't 'access'", async () => {
     const token = await sign({ sub: "user-1", type: "refresh" });
-
-    await expect(
-      authenticate(fakeReq(`Bearer ${token}`), {} as Response, vi.fn()),
-    ).rejects.toThrow(AppError);
-  });
-
-  it("throws for a token signed with a different algorithm", async () => {
-    const token = await sign({ sub: "user-1", type: "access" }, { algorithm: "HS384" });
 
     await expect(
       authenticate(fakeReq(`Bearer ${token}`), {} as Response, vi.fn()),

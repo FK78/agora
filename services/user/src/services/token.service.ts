@@ -9,20 +9,20 @@ import {
 import type { RefreshToken } from "../types/tokens.ts";
 import type { AuthUser } from "../types/auth.ts";
 import { generateOpaqueToken, hashToken } from "../utils/auth.ts";
-import { env } from "../config/env.ts";
+import { getPrivateKey } from "../config/keys.ts";
 
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-const secret = new TextEncoder().encode(env.ACCESS_TOKEN_SECRET);
-
-const signAccessToken = async (user: AuthUser): Promise<string> =>
-  new SignJWT({ sub: user.id, type: "access" })
-    .setProtectedHeader({ alg: "HS256" })
+const signAccessToken = async (user: AuthUser): Promise<string> => {
+  const key = await getPrivateKey();
+  return new SignJWT({ sub: user.id, type: "access" })
+    .setProtectedHeader({ alg: "ES256" })
     .setIssuedAt()
     .setIssuer("agora-user-service")
     .setAudience("agora-api")
     .setExpirationTime("15m")
-    .sign(secret);
+    .sign(key);
+};
 
 const createAndPersistTokenPair = async (
   user: AuthUser,
