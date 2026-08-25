@@ -37,7 +37,7 @@ export const saveRefreshToken = async (
 
 /**
  * @param refreshTokenHash - Hash of the token to find
- * @param dbOrTx - Database or transaction instance
+ * @param dbOrTx - Database or transaction instance (should be a transaction!)
  * @returns Token record or null if not found
  */
 export const findRefreshTokenByHash = async (
@@ -48,7 +48,8 @@ export const findRefreshTokenByHash = async (
     .select()
     .from(refreshTokens)
     .where(eq(refreshTokens.tokenHash, refreshTokenHash))
-    .limit(1);
+    .limit(1)
+    .for("update"); // Row-level lock - prevents race condition in token rotation
 
   return token ?? null;
 };
