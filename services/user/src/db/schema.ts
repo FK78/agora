@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp, index, uniqueIndex, boolean, check } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -80,3 +80,23 @@ export type RefreshToken = typeof refreshTokens.$inferSelect;
 
 export type NewUser = typeof users.$inferInsert;
 export type NewRefreshToken = typeof refreshTokens.$inferInsert;
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  addresses: many(addresses),
+  refreshTokens: many(refreshTokens),
+}));
+
+export const addressesRelations = relations(addresses, ({ one }) => ({
+  user: one(users, {
+    fields: [addresses.userId],
+    references: [users.id],
+  }),
+}));
+
+export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [refreshTokens.userId],
+    references: [users.id],
+  }),
+}));
