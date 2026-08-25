@@ -1,4 +1,6 @@
 import { randomBytes } from "crypto";
+import { DrizzleQueryError } from "drizzle-orm/errors";
+import { DatabaseError } from "pg";
 import { AppError } from "../errors/AppError.ts";
 import {
   createUser,
@@ -12,9 +14,26 @@ import {
   findRefreshTokenByHash,
   revokeTokenFamily,
 } from "../queries/token.queries.ts";
-import { withTransaction } from "../db/db.ts";
+import { db } from "../db/db.ts";
 import type { LoginInput, RegisterInput } from "../schemas/auth.schema.ts";
 
+const isUniqueViolation = (err: unknown): boolean => {
+  if (err instanceof DrizzleQueryError) {
+    if (err.cause instanceof DatabaseError) {
+      return err.cause.code === "23505";
+    }
+  }
+  
+  if (err instanceof DatabaseError) {
+    return err.code === "23505";
+  }
+  
+  return false;
+};
+
+/**
+ * @throws AppError 409 if email already exists
+ */
 export const registerUser = async ({ name, email, password }: RegisterInput) => {
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -26,15 +45,18 @@ export const registerUser = async ({ name, email, password }: RegisterInput) => 
   try {
     const result = await createUser(name, normalizedEmail, hashedPassword);
     return await issueTokenPair(result);
-  } catch (err: any) {
-    if (err.code === "23505") {
+  } catch (err: unknown) {
+    if (isUniqueViolation(err)) {
       throw new AppError("User already exists", 409);
     }
     throw err;
   }
 };
 
-export const loginUser = async ({email, password}: LoginInput) => {
+/**
+ * @throws AppError 401 if credentials are invalid
+ */
+export const loginUser = async ({ email, password }: LoginInput) => {
   const normalizedEmail = email.trim().toLowerCase();
   const result = await findUserByEmail(normalizedEmail);
   const extractedSalt = result?.passwordHash.split("$")[4];
@@ -51,18 +73,20 @@ export const loginUser = async ({email, password}: LoginInput) => {
   return await issueTokenPair(result);
 };
 
+/**
+ * @throws AppError 401 if token is invalid, reused, or expired
+ */
 export const refreshTokens = async (incomingRefreshToken: string) => {
-  return await withTransaction(async (client) => {
-    const refreshTokenHash = hashToken(incomingRefreshToken)
-    
-    const tokenRow = await findRefreshTokenByHash(refreshTokenHash, client);
+  return await db.transaction(async (tx) => {
+    const refreshTokenHash = hashToken(incomingRefreshToken);
+    const tokenRow = await findRefreshTokenByHash(refreshTokenHash, tx);
     if (!tokenRow) {
       throw new AppError("Invalid refresh token", 401);
     }
 
     if (tokenRow.revokedAt || tokenRow.replacedById) {
-        // Intentionally not using the transaction client as this revocation must
-        // survive even though this branch always throws and rolls the tx back.
+      // Revoke outside transaction so it persists even after rollback
+      // Invalidate the family regardless of whether this transaction succeeds or fails
       await revokeTokenFamily(tokenRow.tokenFamilyId, "reuse_detected");
       throw new AppError("Refresh token reuse detected", 401);
     }
@@ -71,11 +95,11 @@ export const refreshTokens = async (incomingRefreshToken: string) => {
       throw new AppError("Refresh token expired", 401);
     }
 
-    const user = await findUserById(tokenRow.userId, client);
+    const user = await findUserById(tokenRow.userId, tx);
     if (!user) {
       throw new AppError("User not found", 401);
     }
 
-    return await rotateTokenPair(user, tokenRow, client);
-  })
+    return await rotateTokenPair(user, tokenRow, tx);
+  });
 };

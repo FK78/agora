@@ -1,30 +1,6 @@
-import type { PoolClient } from "pg";
-import { pool } from "../db/db.ts";
-import type { RefreshToken, RevokedReason } from "../types/tokens.ts";
-
-interface RefreshTokenRow {
-  id: string;
-  token_hash: string;
-  user_id: string;
-  token_family_id: string;
-  replaced_by_id: string | null;
-  expires_at: Date;
-  revoked_at: Date | null;
-  revoked_reason: RevokedReason | null;
-  created_at: Date;
-}
-
-const mapRow = (row: RefreshTokenRow): RefreshToken => ({
-  id: row.id,
-  refreshTokenHash: row.token_hash,
-  userId: row.user_id,
-  tokenFamilyId: row.token_family_id,
-  replacedById: row.replaced_by_id,
-  revokedAt: row.revoked_at,
-  revokedReason: row.revoked_reason,
-  expiresAt: row.expires_at,
-  createdAt: row.created_at,
-});
+import { eq, sql, isNull, and } from "drizzle-orm";
+import { db, type DbOrTransaction } from "../db/db.ts";
+import { refreshTokens, type RefreshToken, type NewRefreshToken } from "../db/schema.ts";
 
 interface SaveRefreshTokenInput {
   refreshTokenHash: string;
@@ -33,69 +9,105 @@ interface SaveRefreshTokenInput {
   expiresAt: Date;
 }
 
+/**
+ * @param input - Token data to save
+ * @param dbOrTx - Database or transaction instance
+ * @returns The created refresh token record
+ */
 export const saveRefreshToken = async (
   input: SaveRefreshTokenInput,
-  client?: PoolClient
+  dbOrTx: DbOrTransaction = db
 ): Promise<RefreshToken> => {
-  const db = client || pool
-  const result = await db.query(
-    "INSERT INTO refresh_tokens(token_hash, user_id, token_family_id, expires_at) VALUES ($1, $2, $3, $4) RETURNING *",
-    [
-      input.refreshTokenHash,
-      input.userId,
-      input.tokenFamilyId,
-      input.expiresAt,
-    ],
-  );
-  const row = result.rows[0];
-  if (!row) {
+  const [token] = await dbOrTx
+    .insert(refreshTokens)
+    .values({
+      tokenHash: input.refreshTokenHash,
+      userId: input.userId,
+      tokenFamilyId: input.tokenFamilyId,
+      expiresAt: input.expiresAt,
+    })
+    .returning();
+
+  if (!token) {
     throw new Error("Failed to insert refresh token");
   }
-  return mapRow(row);
+
+  return token;
 };
 
+/**
+ * @param refreshTokenHash - Hash of the token to find
+ * @param dbOrTx - Database or transaction instance (should be a transaction!)
+ * @returns Token record or null if not found
+ */
 export const findRefreshTokenByHash = async (
   refreshTokenHash: string,
-  client?: PoolClient
+  dbOrTx: DbOrTransaction = db
 ): Promise<RefreshToken | null> => {
-  const db = client || pool
-  const result = await db.query<RefreshTokenRow>(
-    `SELECT * FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE`,
-    [refreshTokenHash],
-  );
-  const row = result.rows[0];
-  return row ? mapRow(row) : null;
+  const [token] = await dbOrTx
+    .select()
+    .from(refreshTokens)
+    .where(eq(refreshTokens.tokenHash, refreshTokenHash))
+    .limit(1)
+    .for("update"); // Row-level lock - prevents race condition in token rotation
+
+  return token ?? null;
 };
 
+/**
+ * @param oldTokenId - ID of the token being replaced
+ * @param dbOrTx - Database or transaction instance
+ */
 export const markTokenReplaced = async (
   oldTokenId: string,
-  client?: PoolClient
+  dbOrTx: DbOrTransaction = db
 ): Promise<void> => {
-  const db = client || pool
-  await db.query(
-    `UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`,
-    [oldTokenId],
-  );
+  await dbOrTx
+    .update(refreshTokens)
+    .set({
+      revokedAt: sql`now()`,
+    })
+    .where(eq(refreshTokens.id, oldTokenId));
 };
 
+/**
+ * @param oldTokenId - ID of the old token
+ * @param newTokenId - ID of the new token that replaced it
+ * @param dbOrTx - Database or transaction instance
+ */
 export const linkReplacedToken = async (
   oldTokenId: string,
   newTokenId: string,
-  client?: PoolClient
+  dbOrTx: DbOrTransaction = db
 ): Promise<void> => {
-  const db = client || pool
-  await db.query(
-    `UPDATE refresh_tokens SET replaced_by_id = $2 WHERE id = $1`,
-    [oldTokenId, newTokenId],
-  );
+  await dbOrTx
+    .update(refreshTokens)
+    .set({
+      replacedById: newTokenId,
+    })
+    .where(eq(refreshTokens.id, oldTokenId));
 };
 
+/**
+ * @param tokenFamilyId - ID of the token family to revoke
+ * @param reason - Reason for revocation (e.g., 'reuse_detected')
+ * @param dbOrTx - Database or transaction instance
+ */
 export const revokeTokenFamily = async (
-  tokenFamilyId: string, reason: string
+  tokenFamilyId: string,
+  reason: string,
+  dbOrTx: DbOrTransaction = db
 ): Promise<void> => {
-  await pool.query(
-    `UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = $2
-    WHERE token_family_id = $1 AND revoked_at IS NULL`,
-    [tokenFamilyId, reason],
-  );
+  await dbOrTx
+    .update(refreshTokens)
+    .set({
+      revokedAt: sql`now()`,
+      revokedReason: reason,
+    })
+    .where(
+      and(
+        eq(refreshTokens.tokenFamilyId, tokenFamilyId),
+        isNull(refreshTokens.revokedAt)
+      )
+    );
 };

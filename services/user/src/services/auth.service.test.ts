@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { DrizzleQueryError } from "drizzle-orm/errors";
+import { DatabaseError } from "pg";
 import { registerUser, loginUser, refreshTokens } from "./auth.service.ts";
 import {
   createUser,
@@ -15,14 +17,27 @@ import { hashString } from "../utils/auth.ts";
 import { AppError } from "../errors/AppError.ts";
 import type { UserRecord } from "../types/auth.ts";
 import type { RefreshToken } from "../types/tokens.ts";
-import type { PoolClient } from "pg";
+import type { DbOrTransaction } from "../db/db.ts";
 
 vi.mock("../queries/auth.queries.ts");
 vi.mock("../queries/token.queries.ts");
 vi.mock("./token.service.ts");
 vi.mock("../db/db.ts", () => ({
-  withTransaction: vi.fn((fn: (client: PoolClient) => unknown) => fn({} as PoolClient)),
+  db: {
+    transaction: vi.fn(async <T>(fn: (tx: DbOrTransaction) => Promise<T>) => fn({} as DbOrTransaction)),
+  },
 }));
+
+const createDrizzleUniqueViolationError = () => {
+  const dbError = new DatabaseError("duplicate key value violates unique constraint", 0, "error");
+  (dbError as any).code = "23505";
+  
+  return new DrizzleQueryError(
+    'insert into "users" (name, email, password_hash) values ($1, $2, $3)',
+    ["Ada", "ada@example.com", "hash"],
+    dbError
+  );
+};
 
 const fakeUser = (overrides: Partial<UserRecord> = {}): UserRecord => ({
   id: "user-1",
@@ -71,9 +86,20 @@ describe("registerUser", () => {
     expect(createUser).not.toHaveBeenCalled();
   });
 
-  it("maps a unique-violation error from createUser to a 409", async () => {
+  it("maps a DrizzleQueryError with unique-violation to a 409", async () => {
     vi.mocked(emailExists).mockResolvedValue(false);
-    vi.mocked(createUser).mockRejectedValue({ code: "23505" });
+    vi.mocked(createUser).mockRejectedValue(createDrizzleUniqueViolationError());
+
+    await expect(
+      registerUser({ name: "Ada", email: "ada@example.com", password: "correct-horse-battery" }),
+    ).rejects.toMatchObject(new AppError("User already exists", 409));
+  });
+
+  it("maps a direct DatabaseError unique-violation to a 409", async () => {
+    vi.mocked(emailExists).mockResolvedValue(false);
+    const dbError = new DatabaseError("duplicate key value violates unique constraint", 0, "error");
+    (dbError as any).code = "23505";
+    vi.mocked(createUser).mockRejectedValue(dbError);
 
     await expect(
       registerUser({ name: "Ada", email: "ada@example.com", password: "correct-horse-battery" }),
@@ -130,7 +156,7 @@ describe("loginUser", () => {
 describe("refreshTokens", () => {
   const fakeRow = (overrides: Partial<RefreshToken> = {}): RefreshToken => ({
     id: "token-1",
-    refreshTokenHash: "hash",
+    tokenHash: "hash",
     userId: "user-1",
     tokenFamilyId: "family-1",
     replacedById: null,

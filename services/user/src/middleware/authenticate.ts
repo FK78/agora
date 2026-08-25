@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
-import jwt from "jsonwebtoken";
+import { jwtVerify } from "jose";
 import { AppError } from "../errors/AppError.ts";
-import { env } from "../config/env.ts";
+import { getPublicKey } from "../config/keys.ts";
 
 export const authenticate = async (
   req: Request,
@@ -14,22 +14,24 @@ export const authenticate = async (
   }
   const accessToken = authHeader.split(" ")[1]!;
 
-  let payload: { sub: string; type: string };
+  let payload: { sub?: string; type?: string };
 
   try {
-    payload = jwt.verify(
-      accessToken,
-      env.ACCESS_TOKEN_SECRET!,
-      { algorithms: ["HS256"], issuer: "auth-starter", audience: "auth-starter-api" }
-    ) as unknown as typeof payload;
+    const key = await getPublicKey();
+    const { payload: verified } = await jwtVerify(accessToken, key, {
+      algorithms: ["ES256"],
+      issuer: "agora-user-service",
+      audience: "agora-api",
+    });
+    payload = verified as typeof payload;
   } catch {
     throw new AppError("Invalid access token", 401);
   }
 
   if (payload.type !== "access" || !payload.sub) {
-      throw new AppError("Invalid access token", 401);
+    throw new AppError("Invalid access token", 401);
   }
- 
+
   req.user = { id: payload.sub };
   next();
 };

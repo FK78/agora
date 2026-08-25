@@ -1,63 +1,80 @@
-import type { PoolClient } from "pg";
-import { pool } from "../db/db.ts";
-import type { UserRecord } from "../types/auth.ts";
+import { eq, sql } from "drizzle-orm";
+import { db, type DbOrTransaction } from "../db/db.ts";
+import { users, type User, type NewUser } from "../db/schema.ts";
 
-interface UserRow {
-  id: string;
-  name: string;
-  email: string;
-  password_hash: string;
-}
-
-const mapUserRow = (row: UserRow): UserRecord => ({
-  id: row.id,
-  name: row.name,
-  email: row.email,
-  passwordHash: row.password_hash,
-});
-
+/**
+ * @param name - User's display name
+ * @param email - User's email address
+ * @param hashedPassword - Bcrypt hash of the password
+ * @returns The created user record
+ * @throws Error if insert fails (e.g., duplicate email)
+ */
 export const createUser = async (
   name: string,
   email: string,
-  hashedPassword: string,
-): Promise<UserRecord> => {
-  const result = await pool.query<UserRow>(
-    "INSERT INTO users(name, email, password_hash) VALUES ($1, $2, $3) RETURNING *",
-    [name, email, hashedPassword],
-  );
+  hashedPassword: string
+): Promise<User> => {
+  const [user] = await db
+    .insert(users)
+    .values({
+      name,
+      email,
+      passwordHash: hashedPassword,
+    })
+    .returning();
 
-  const row = result.rows[0];
-  if (!row) {
+  if (!user) {
     throw new Error("Failed to insert user");
   }
-  return mapUserRow(row);
+
+  return user;
 };
 
+/**
+ * @param email - Email to check
+ * @returns true if email exists, false otherwise
+ */
 export const emailExists = async (email: string): Promise<boolean> => {
-  const result = await pool.query(
-    `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1) AS exists`,
-    [email],
-  );
-  return result.rows[0].exists;
+  // Select just the id (any column works, we just need to check existence)
+  // .limit(1) ensures we stop after finding one match
+  const result = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  // If array has any elements, the email exists
+  return result.length > 0;
 };
 
-export const findUserByEmail = async (
-  email: string,
-): Promise<UserRecord | null> => {
-  const result = await pool.query<UserRow>(
-    "SELECT id, name, email, password_hash FROM users WHERE email = $1",
-    [email],
-  );
-  const row = result.rows[0];
-  return row ? mapUserRow(row) : null;
+/**
+ * @param email - Email to search for
+ * @returns User record or null if not found
+ */
+export const findUserByEmail = async (email: string): Promise<User | null> => {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  return user ?? null;
 };
 
-export const findUserById = async (id: string, client?: PoolClient): Promise<UserRecord | null> => {
-  const db = client || pool
-  const result = await db.query<UserRow>(
-    "SELECT id, name, email, password_hash FROM users WHERE id = $1",
-    [id],
-  );
-  const row = result.rows[0]
-  return row ? mapUserRow(row) : null;
+/**
+ * @param id - User ID (UUID)
+ * @param dbOrTx - Database instance or transaction (defaults to main db)
+ * @returns User record or null if not found
+ */
+export const findUserById = async (
+  id: string,
+  dbOrTx: DbOrTransaction = db
+): Promise<User | null> => {
+  const [user] = await dbOrTx
+    .select()
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+
+  return user ?? null;
 };
