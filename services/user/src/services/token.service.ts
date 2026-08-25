@@ -1,11 +1,11 @@
-import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
+import { SignJWT } from "jose";
+import type { PoolClient } from "pg";
 import {
   linkReplacedToken,
   markTokenReplaced,
   saveRefreshToken,
 } from "../queries/token.queries.ts";
-import type { PoolClient } from "pg";
 import type { RefreshToken } from "../types/tokens.ts";
 import type { AuthUser } from "../types/auth.ts";
 import { generateOpaqueToken, hashToken } from "../utils/auth.ts";
@@ -13,26 +13,35 @@ import { env } from "../config/env.ts";
 
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-const signAccessToken = (user: AuthUser): string =>
-  jwt.sign({ sub: user.id, type: "access" }, env.ACCESS_TOKEN_SECRET!, {
-    expiresIn: "15m", issuer: "auth-starter", audience: "auth-starter-api"
-  });
+const secret = new TextEncoder().encode(env.ACCESS_TOKEN_SECRET);
+
+const signAccessToken = async (user: AuthUser): Promise<string> =>
+  new SignJWT({ sub: user.id, type: "access" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setIssuer("agora-user-service")
+    .setAudience("agora-api")
+    .setExpirationTime("15m")
+    .sign(secret);
 
 const createAndPersistTokenPair = async (
   user: AuthUser,
   tokenFamilyId: string,
   client?: PoolClient
 ) => {
-  const accessToken = signAccessToken(user);
-  const refreshToken = generateOpaqueToken()
-  const refreshTokenHash = hashToken(refreshToken)
+  const accessToken = await signAccessToken(user);
+  const refreshToken = generateOpaqueToken();
+  const refreshTokenHash = hashToken(refreshToken);
 
-  const newRow = await saveRefreshToken({
-    refreshTokenHash,
-    userId: user.id,
-    tokenFamilyId,
-    expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-  }, client);
+  const newRow = await saveRefreshToken(
+    {
+      refreshTokenHash,
+      userId: user.id,
+      tokenFamilyId,
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+    },
+    client
+  );
 
   return { accessToken, refreshToken, newRow };
 };
@@ -40,7 +49,7 @@ const createAndPersistTokenPair = async (
 export const issueTokenPair = async (user: AuthUser) => {
   const { accessToken, refreshToken } = await createAndPersistTokenPair(
     user,
-    randomUUID(),
+    randomUUID()
   );
   return { accessToken, refreshToken };
 };

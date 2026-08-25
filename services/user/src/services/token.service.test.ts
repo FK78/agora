@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import jwt from "jsonwebtoken";
+import { jwtVerify } from "jose";
 import type { PoolClient } from "pg";
 import { issueTokenPair, rotateTokenPair } from "./token.service.ts";
 import {
@@ -14,6 +14,7 @@ import type { AuthUser } from "../types/auth.ts";
 
 vi.mock("../queries/token.queries.ts");
 
+const secret = new TextEncoder().encode(env.ACCESS_TOKEN_SECRET);
 const user: AuthUser = { id: "user-1" };
 
 const fakeRefreshTokenRow = (overrides: Partial<RefreshToken> = {}): RefreshToken => ({
@@ -37,10 +38,10 @@ describe("issueTokenPair", () => {
   it("signs an access token with the correct claims", async () => {
     const { accessToken } = await issueTokenPair(user);
 
-    const payload = jwt.verify(accessToken, env.ACCESS_TOKEN_SECRET, {
-      issuer: "auth-starter",
-      audience: "auth-starter-api",
-    }) as jwt.JwtPayload;
+    const { payload } = await jwtVerify(accessToken, secret, {
+      issuer: "agora-user-service",
+      audience: "agora-api",
+    });
 
     expect(payload.sub).toBe(user.id);
     expect(payload.type).toBe("access");
@@ -78,7 +79,7 @@ describe("rotateTokenPair", () => {
     expect(markTokenReplaced).toHaveBeenCalledWith("old-id", client);
     expect(saveRefreshToken).toHaveBeenCalledWith(
       expect.objectContaining({ userId: user.id, tokenFamilyId: "family-42" }),
-      client,
+      client
     );
     expect(linkReplacedToken).toHaveBeenCalledWith("old-id", "new-id", client);
   });
