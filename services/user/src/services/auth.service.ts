@@ -1,4 +1,6 @@
 import { randomBytes } from "crypto";
+import { DrizzleQueryError } from "drizzle-orm/errors";
+import { DatabaseError } from "pg";
 import { AppError } from "../errors/AppError.ts";
 import {
   createUser,
@@ -15,6 +17,20 @@ import {
 import { db } from "../db/db.ts";
 import type { LoginInput, RegisterInput } from "../schemas/auth.schema.ts";
 
+const isUniqueViolation = (err: unknown): boolean => {
+  if (err instanceof DrizzleQueryError) {
+    if (err.cause instanceof DatabaseError) {
+      return err.cause.code === "23505";
+    }
+  }
+  
+  if (err instanceof DatabaseError) {
+    return err.code === "23505";
+  }
+  
+  return false;
+};
+
 /**
  * @throws AppError 409 if email already exists
  */
@@ -29,8 +45,8 @@ export const registerUser = async ({ name, email, password }: RegisterInput) => 
   try {
     const result = await createUser(name, normalizedEmail, hashedPassword);
     return await issueTokenPair(result);
-  } catch (err: any) {
-    if (err.code === "23505") {
+  } catch (err: unknown) {
+    if (isUniqueViolation(err)) {
       throw new AppError("User already exists", 409);
     }
     throw err;
