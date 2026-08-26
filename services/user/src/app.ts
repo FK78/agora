@@ -24,7 +24,7 @@ app.use(express.json());
 
 app.use(authRouter);
 app.use(healthRouter);
-app.use("/me", meRouter);
+app.use("/me/addresses", meRouter);
 
 app.use(routeNotFound);
 app.use(errorHandler);
