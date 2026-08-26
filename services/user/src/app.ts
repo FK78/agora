@@ -3,6 +3,7 @@ import cors from "cors";
 import { pinoHttp } from "pino-http";
 import authRouter from "./routes/auth.router.ts";
 import healthRouter from "./routes/health.router.ts";
+import meRouter from "./routes/me.router.ts";
 import { errorHandler, routeNotFound } from "./middleware/errorHandler.ts";
 import { env } from "./config/env.ts";
 import { logger } from "./utils/logger.ts";
@@ -23,6 +24,7 @@ app.use(express.json());
 
 app.use(authRouter);
 app.use(healthRouter);
+app.use("/me", meRouter);
 
 app.use(routeNotFound);
 app.use(errorHandler);

@@ -44,6 +44,10 @@ const fakeUser = (overrides: Partial<UserRecord> = {}): UserRecord => ({
   name: "Ada Lovelace",
   email: "ada@example.com",
   passwordHash: "hash",
+  phoneNumber: null,
+  emailVerified: false,
+  createdAt: new Date(),
+  updatedAt: new Date(),
   ...overrides,
 });
 

@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, type DbOrTransaction } from "../db/db.ts";
-import { users, type User, type NewUser } from "../db/schema.ts";
+import { users, type User } from "../db/schema.ts";
 
 /**
  * @param name - User's display name
