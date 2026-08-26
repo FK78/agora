@@ -55,3 +55,22 @@ export const updateAddress = async (
     .returning();
   return updated ?? null;
 };
+
+/**
+ * Deletes an address owned by a specific user
+ * @param addressId - Address ID (UUID)
+ * @param userId - User ID (UUID) - ensures user owns the address
+ * @param dbOrTx - Database instance or transaction (defaults to main db)
+ * @returns true if deleted, false if not found/not owned by user
+ */
+export const deleteAddress = async (
+  addressId: string,
+  userId: string,
+  dbOrTx: DbOrTransaction = db
+): Promise<boolean> => {
+  const result = await dbOrTx
+    .delete(addresses)
+    .where(and(eq(addresses.id, addressId), eq(addresses.userId, userId)))
+    .returning({ id: addresses.id });
+  return result.length > 0;
+};

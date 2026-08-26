@@ -1,4 +1,4 @@
-import { getAddresses, createAddress, updateAddress } from "../queries/me.queries.ts";
+import { getAddresses, createAddress, updateAddress, deleteAddress } from "../queries/me.queries.ts";
 import type { Address } from "../db/schema.ts";
 import type { CreateAddressInput, UpdateAddressInput } from "../schemas/me.schema.ts";
 import { AppError } from "../errors/AppError.ts";
@@ -40,4 +40,14 @@ export const updateUserAddress = async (
     throw new AppError("Address not found", 404);
   }
   return updated;
+};
+
+export const deleteUserAddress = async (
+  addressId: string,
+  userId: string
+): Promise<void> => {
+  const deleted = await deleteAddress(addressId, userId);
+  if (!deleted) {
+    throw new AppError("Address not found", 404);
+  }
 };
