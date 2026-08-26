@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { addUserAddress, getUserAddresses, updateUserAddress, deleteUserAddress } from "../services/me.service.ts";
+import { addUserAddress, getUserAddresses, updateUserAddress, deleteUserAddress, setDefaultAddress } from "../services/me.service.ts";
 
 export const getAddresses = async (req: Request, res: Response) => {
   const userId = req.user!.id;
@@ -25,4 +25,11 @@ export const deleteAddress = async (req: Request, res: Response) => {
   const addressId = req.params.addressId as string;
   await deleteUserAddress(addressId, userId);
   return res.status(204).send();
+};
+
+export const setDefault = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const addressId = req.params.addressId as string;
+  const address = await setDefaultAddress(addressId, userId);
+  return res.status(200).json(address);
 };

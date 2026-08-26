@@ -74,3 +74,18 @@ export const deleteAddress = async (
     .returning({ id: addresses.id });
   return result.length > 0;
 };
+
+/**
+ * Clears isDefault on all addresses for a user
+ * @param userId - User ID (UUID)
+ * @param dbOrTx - Database instance or transaction (defaults to main db)
+ */
+export const clearDefaultAddresses = async (
+  userId: string,
+  dbOrTx: DbOrTransaction = db
+): Promise<void> => {
+  await dbOrTx
+    .update(addresses)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(eq(addresses.userId, userId));
+};
