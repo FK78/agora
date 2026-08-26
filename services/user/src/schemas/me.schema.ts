@@ -18,7 +18,7 @@ export const createAddressSchema = z.object({
 export const updateAddressSchema = createAddressSchema.partial();
 
 export const addressIdParamSchema = z.object({
-  addressId: z.string().uuid("Invalid address ID"),
+  addressId: z.uuid("Invalid address ID"),
 });
 
 export type CreateAddressInput = z.infer<typeof createAddressSchema>;

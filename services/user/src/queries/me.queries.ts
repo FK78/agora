@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db, type DbOrTransaction } from "../db/db.ts";
 import { type Address, type NewAddress, addresses } from "../db/schema.ts";
 
@@ -32,4 +32,26 @@ export const createAddress = async (
     .values(address)
     .returning();
   return created!;
+};
+
+/**
+ * Updates an address owned by a specific user
+ * @param addressId - Address ID (UUID)
+ * @param userId - User ID (UUID) - ensures user owns the address
+ * @param updates - Partial address fields to update
+ * @param dbOrTx - Database instance or transaction (defaults to main db)
+ * @returns The updated address or null if not found/not owned by user
+ */
+export const updateAddress = async (
+  addressId: string,
+  userId: string,
+  updates: Partial<Omit<Address, "id" | "userId" | "createdAt" | "updatedAt">>,
+  dbOrTx: DbOrTransaction = db
+): Promise<Address | null> => {
+  const [updated] = await dbOrTx
+    .update(addresses)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(and(eq(addresses.id, addressId), eq(addresses.userId, userId)))
+    .returning();
+  return updated ?? null;
 };
