@@ -1,11 +1,19 @@
-import { pgTable, uuid, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { pgTable, uuid, text, timestamp, index, uniqueIndex, boolean, check } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  phoneNumber: text("phone_number"),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now()`)
 });
 
 export const refreshTokens = pgTable(
@@ -34,8 +42,61 @@ export const refreshTokens = pgTable(
   ]
 );
 
+export const addresses = pgTable(
+  "addresses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    type: text("type").notNull(),
+    isDefault: boolean("is_default").notNull().default(false),
+    name: text("name").notNull(),
+    line1: text("line1").notNull(),
+    line2: text("line2"),
+    city: text("city").notNull(),
+    state: text("state"),
+    postalCode: text("postal_code").notNull(),
+    country: text("country").notNull(),
+    phone: text("phone"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    index("idx_addresses_user_id").on(table.userId),
+    check("address_type_check", sql`${table.type} IN ('shipping', 'billing')`),
+  ]
+);
+
+export type Address = typeof addresses.$inferSelect;
+export type NewAddress = typeof addresses.$inferInsert;
+
 export type User = typeof users.$inferSelect;
 export type RefreshToken = typeof refreshTokens.$inferSelect;
 
 export type NewUser = typeof users.$inferInsert;
 export type NewRefreshToken = typeof refreshTokens.$inferInsert;
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  addresses: many(addresses),
+  refreshTokens: many(refreshTokens),
+}));
+
+export const addressesRelations = relations(addresses, ({ one }) => ({
+  user: one(users, {
+    fields: [addresses.userId],
+    references: [users.id],
+  }),
+}));
+
+export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [refreshTokens.userId],
+    references: [users.id],
+  }),
+}));

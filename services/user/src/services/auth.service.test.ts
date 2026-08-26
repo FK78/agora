@@ -39,11 +39,17 @@ const createDrizzleUniqueViolationError = () => {
   );
 };
 
+const FIXED_DATE = new Date("2024-01-01T00:00:00Z");
+
 const fakeUser = (overrides: Partial<UserRecord> = {}): UserRecord => ({
   id: "user-1",
   name: "Ada Lovelace",
   email: "ada@example.com",
   passwordHash: "hash",
+  phoneNumber: null,
+  emailVerified: false,
+  createdAt: FIXED_DATE,
+  updatedAt: FIXED_DATE,
   ...overrides,
 });
 
