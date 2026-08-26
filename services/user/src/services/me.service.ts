@@ -1,4 +1,4 @@
-import { getAddresses, createAddress, updateAddress, deleteAddress, clearDefaultAddresses } from "../queries/me.queries.ts";
+import { getAddresses, createAddress, updateAddress, deleteAddress, clearDefaultAddresses, getAddressById } from "../queries/me.queries.ts";
 import { db } from "../db/db.ts";
 import type { Address } from "../db/schema.ts";
 import type { CreateAddressInput, UpdateAddressInput } from "../schemas/me.schema.ts";
@@ -58,12 +58,14 @@ export const setDefaultAddress = async (
   userId: string
 ): Promise<Address> => {
   return db.transaction(async (tx) => {
-    await clearDefaultAddresses(userId, tx);
-    
-    const updated = await updateAddress(addressId, userId, { isDefault: true }, tx);
-    if (!updated) {
+    const address = await getAddressById(addressId, userId, tx);
+    if (!address) {
       throw new AppError("Address not found", 404);
     }
-    return updated;
+
+    await clearDefaultAddresses(userId, address.type, tx);
+
+    const updated = await updateAddress(addressId, userId, { isDefault: true }, tx);
+    return updated!;
   });
 };

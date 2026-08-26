@@ -76,16 +76,37 @@ export const deleteAddress = async (
 };
 
 /**
- * Clears isDefault on all addresses for a user
+ * Clears isDefault on addresses for a user, filtered by type
  * @param userId - User ID (UUID)
+ * @param type - Address type to clear defaults for (shipping or billing)
  * @param dbOrTx - Database instance or transaction (defaults to main db)
  */
 export const clearDefaultAddresses = async (
   userId: string,
+  type: string,
   dbOrTx: DbOrTransaction = db
 ): Promise<void> => {
   await dbOrTx
     .update(addresses)
     .set({ isDefault: false, updatedAt: new Date() })
-    .where(eq(addresses.userId, userId));
+    .where(and(eq(addresses.userId, userId), eq(addresses.type, type)));
+};
+
+/**
+ * Gets a single address by ID and user
+ * @param addressId - Address ID (UUID)
+ * @param userId - User ID (UUID)
+ * @param dbOrTx - Database instance or transaction (defaults to main db)
+ * @returns The address or null if not found/not owned by user
+ */
+export const getAddressById = async (
+  addressId: string,
+  userId: string,
+  dbOrTx: DbOrTransaction = db
+): Promise<Address | null> => {
+  const [address] = await dbOrTx
+    .select()
+    .from(addresses)
+    .where(and(eq(addresses.id, addressId), eq(addresses.userId, userId)));
+  return address ?? null;
 };
